@@ -474,6 +474,22 @@ func main() {
 		envBool(false, "GITSYNC_HTTP_PPROF", "GIT_SYNC_HTTP_PPROF"),
 		"enable the pprof debug endpoints on git-sync's HTTP endpoint")
 
+	flWebhookSync := pflag.Bool("webhook-sync",
+		envBool(false, "GITSYNC_WEBHOOK_SYNC", "GIT_SYNC_WEBHOOK_SYNC"),
+		"a URL for syncing on Webhooks instead of syncing on polling")
+	flWebhookSyncURI := pflag.String("webhook-sync-uri",
+		envString("/sync", "GITSYNC_WEBHOOK_SYNC_URI", "GIT_SYNC_WEBHOOK_SYNC_URI"),
+		"URI to send sync requests to for webhook syncing")
+	// flWebhookSyncIP := pflag.String("webhook-sync-ip",
+	// 	envString("", "GITSYNC_WEBHOOK_SYNC_IP", "GIT_SYNC_WEBHOOK_SYNC_IP"),
+	// 	"IP that the webhooks will be sent from")
+	// flWebhookSyncSecret := pflag.String("webhook-sync-secret",
+	// 	envString("", "GITSYNC_WEBHOOK_SYNC_SECRET", "GIT_SYNC_WEBHOOK_SYNC_SECRET"),
+	// 	"a Secret that is used to authenticate the web")
+	// flWebhookSyncKey := pflag.String("webhook-sync-key",
+	// 	envString("", "GITSYNC_WEBHOOK_SYNC_KEY", "GIT_SYNC_WEBHOOK_SYNC_KEY"),
+	// 	"a Key that is used to sign requests for webhook syncing")
+
 	// Obsolete flags, kept for compat.
 	flDeprecatedBranch := pflag.String("branch", envString("", "GIT_SYNC_BRANCH"),
 		"DEPRECATED: use --ref instead")
@@ -703,6 +719,11 @@ func main() {
 			}
 		}
 	}
+	if *flWebhookSync {
+		if *flWebhookSyncURI == "" {
+			handleConfigError(log, true, "ERROR: --webhook-sync-uri must be specified when --webhook-sync-url is set")
+		}
+	}
 
 	if *flHTTPBind == "" {
 		if *flHTTPMetrics {
@@ -711,6 +732,10 @@ func main() {
 		if *flHTTPprof {
 			handleConfigError(log, true, "ERROR: --http-bind must be specified when --http-pprof is set")
 		}
+		if *flWebhookSync {
+			handleConfigError(log, true, "ERROR: --http-bind must be specified when --webhook-sync-url is set")
+		}
+
 	}
 
 	//
@@ -842,47 +867,6 @@ func main() {
 	// The scope of the initialization context ends here, so we call cancel to release resources associated with it.
 	cancel()
 
-	if *flHTTPBind != "" {
-		ln, err := net.Listen("tcp", *flHTTPBind)
-		if err != nil {
-			log.Error(err, "can't bind HTTP endpoint", "endpoint", *flHTTPBind)
-			os.Exit(1)
-		}
-		mux := http.NewServeMux()
-		reasons := []string{}
-
-		// This is a dumb liveliness check endpoint. Currently this checks
-		// nothing and will always return 200 if the process is live.
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-			if !getRepoReady() {
-				http.Error(w, "repo is not ready", http.StatusServiceUnavailable)
-			}
-			// Otherwise success
-		})
-		reasons = append(reasons, "liveness")
-
-		if *flHTTPMetrics {
-			mux.Handle("/metrics", promhttp.Handler())
-			reasons = append(reasons, "metrics")
-		}
-
-		if *flHTTPprof {
-			mux.HandleFunc("/debug/pprof/", pprof.Index)
-			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
-			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
-			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
-			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
-			reasons = append(reasons, "pprof")
-		}
-
-		log.V(0).Info("serving HTTP", "endpoint", *flHTTPBind, "reasons", reasons)
-		go func() {
-			err := http.Serve(ln, mux)
-			log.Error(err, "HTTP server terminated")
-			os.Exit(1)
-		}()
-	}
-
 	// Startup webhooks goroutine
 	var webhookRunner *hook.HookRunner
 	if *flWebhookURL != "" {
@@ -957,7 +941,7 @@ func main() {
 
 	failCount := 0
 	firstLoop := true
-	for {
+	run := func() {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), *flSyncTimeout)
 
@@ -1037,17 +1021,76 @@ func main() {
 			log.DeleteErrorFile()
 		}
 
-		log.V(3).Info("next sync", "waitTime", flPeriod.String())
 		cancel()
 
-		// Sleep until the next sync. If syncSig is set then the sleep may
-		// be interrupted by that signal.
-		t := time.NewTimer(*flPeriod)
-		select {
-		case <-t.C:
-		case <-sigChan:
-			log.V(1).Info("caught signal", "signal", unix.SignalName(syncSig))
-			t.Stop()
+	}
+
+	if *flHTTPBind != "" {
+		ln, err := net.Listen("tcp", *flHTTPBind)
+		if err != nil {
+			log.Error(err, "can't bind HTTP endpoint", "endpoint", *flHTTPBind)
+			os.Exit(1)
+		}
+		mux := http.NewServeMux()
+		reasons := []string{}
+
+		// This is a dumb liveliness check endpoint. Currently this checks
+		// nothing and will always return 200 if the process is live.
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			if !getRepoReady() {
+				http.Error(w, "repo is not ready", http.StatusServiceUnavailable)
+			}
+			// Otherwise success
+		})
+		reasons = append(reasons, "liveness")
+
+		if *flHTTPMetrics {
+			mux.Handle("/metrics", promhttp.Handler())
+			reasons = append(reasons, "metrics")
+		}
+
+		if *flHTTPprof {
+			mux.HandleFunc("/debug/pprof/", pprof.Index)
+			mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+			mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+			mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+			mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+			reasons = append(reasons, "pprof")
+		}
+
+		if *flWebhookSync {
+			reasons = append(reasons, "webhook")
+			runWebhookSync := func(_ http.ResponseWriter, _ *http.Request) {
+				run()
+			}
+
+			mux.HandleFunc(*flWebhookSyncURI, runWebhookSync)
+		}
+
+		log.V(0).Info("serving HTTP", "endpoint", *flHTTPBind, "reasons", reasons)
+		go func() {
+			err := http.Serve(ln, mux)
+			log.Error(err, "HTTP server terminated")
+			os.Exit(1)
+		}()
+	}
+
+	for {
+		if firstLoop && *flWebhookSync {
+			run()
+		}
+		if !*flWebhookSync {
+			run()
+			// Sleep until the next sync. If syncSig is set then the sleep may
+			// be interrupted by that signal.
+			t := time.NewTimer(*flPeriod)
+			select {
+			case <-t.C:
+			case <-sigChan:
+				log.V(1).Info("caught signal", "signal", unix.SignalName(syncSig))
+				t.Stop()
+			}
+			log.V(3).Info("next sync", "waitTime", flPeriod.String())
 		}
 	}
 }
@@ -2533,6 +2576,9 @@ OPTIONS
             correct hash, this hook will still be invoked.  This means that
             hooks can be invoked more than one time per hash, so they must be
             idempotent.
+
+	--webhook-sync-url <string>, $GITSYNC_WEBHOOK_SYNC_URL
+			A URL for syncing on a webhook rather than sycing based on polling.
 
 EXAMPLE USAGE
 
