@@ -83,6 +83,7 @@ docker run -d \
     registry/git-sync:tag \
         --repo=https://github.com/kubernetes/git-sync \
         --root=/tmp/git/root \
+        --http-bind 0.0.0.0:80 \
         --webhook-sync \
 
 # run an nginx container to serve the content
