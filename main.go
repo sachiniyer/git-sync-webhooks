@@ -118,6 +118,37 @@ func envString(def string, key string, alts ...string) string {
 	return def
 }
 
+func envIPOrError(def net.IPNet, key string, alts ...string) (net.IPNet, error) {
+	parse := func(val string) (net.IPNet, error) {
+		_, res, err := net.ParseCIDR(val)
+		if err == nil {
+			return *res, nil
+		}
+		return def, fmt.Errorf("ERROR: invalid ip env %s=%q: %v\n", key, val, err)
+	}
+	if val := os.Getenv(key); val != "" {
+		return parse(val)
+	}
+	for _, alt := range alts {
+		if val := os.Getenv(key); val != "" {
+			fmt.Fprintf(os.Stderr, "env %s has been deprecated, use %s instead\n", alt, key)
+			return parse(val)
+		}
+	}
+	return def, nil
+}
+
+func envIP(def string, key string, alts ...string) net.IPNet {
+	_, defaultIP, _ := net.ParseCIDR(def)
+	val, err := envIPOrError(*defaultIP, key, alts...)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+		return *defaultIP
+	}
+	return val
+}
+
 func envBoolOrError(def bool, key string, alts ...string) (bool, error) {
 	parse := func(val string) (bool, error) {
 		parsed, err := strconv.ParseBool(val)
@@ -480,9 +511,9 @@ func main() {
 	flWebhookSyncURI := pflag.String("webhook-sync-uri",
 		envString("/sync", "GITSYNC_WEBHOOK_SYNC_URI", "GIT_SYNC_WEBHOOK_SYNC_URI"),
 		"URI to send sync requests to for webhook syncing")
-	// flWebhookSyncIP := pflag.String("webhook-sync-ip",
-	// 	envString("", "GITSYNC_WEBHOOK_SYNC_IP", "GIT_SYNC_WEBHOOK_SYNC_IP"),
-	// 	"IP that the webhooks will be sent from")
+	flWebhookSyncIP := pflag.IPNet("webhook-sync-ip",
+		envIP("0.0.0.0/0", "GITSYNC_WEBHOOK_SYNC_IP", "GIT_SYNC_WEBHOOK_SYNC_IP"),
+		"IP that the webhooks will be sent from")
 	// flWebhookSyncSecret := pflag.String("webhook-sync-secret",
 	// 	envString("", "GITSYNC_WEBHOOK_SYNC_SECRET", "GIT_SYNC_WEBHOOK_SYNC_SECRET"),
 	// 	"a Secret that is used to authenticate the web")
@@ -719,6 +750,7 @@ func main() {
 			}
 		}
 	}
+
 	if *flWebhookSync {
 		if *flWebhookSyncURI == "" {
 			handleConfigError(log, true, "ERROR: --webhook-sync-uri must be specified when --webhook-sync-url is set")
@@ -1020,9 +1052,7 @@ func main() {
 			}
 			log.DeleteErrorFile()
 		}
-
 		cancel()
-
 	}
 
 	if *flHTTPBind != "" {
@@ -1059,12 +1089,14 @@ func main() {
 		}
 
 		if *flWebhookSync {
-			reasons = append(reasons, "webhook")
-			runWebhookSync := func(_ http.ResponseWriter, _ *http.Request) {
-				run()
+			runWebhookSync := func(_ http.ResponseWriter, req *http.Request) {
+				if hook.VerifySyncRequest(req, *flWebhookSyncIP, log) {
+					run()
+				}
 			}
-
 			mux.HandleFunc(*flWebhookSyncURI, runWebhookSync)
+			log.V(3).Info("", "waitTime", flPeriod.String())
+			reasons = append(reasons, "webhook")
 		}
 
 		log.V(0).Info("serving HTTP", "endpoint", *flHTTPBind, "reasons", reasons)
@@ -1076,10 +1108,9 @@ func main() {
 	}
 
 	for {
-		if firstLoop && *flWebhookSync {
+		if firstLoop {
 			run()
-		}
-		if !*flWebhookSync {
+		} else if !*flWebhookSync {
 			run()
 			// Sleep until the next sync. If syncSig is set then the sleep may
 			// be interrupted by that signal.
@@ -1091,6 +1122,8 @@ func main() {
 				t.Stop()
 			}
 			log.V(3).Info("next sync", "waitTime", flPeriod.String())
+		} else {
+			continue
 		}
 	}
 }
@@ -2558,7 +2591,8 @@ OPTIONS
             specified, this defaults to 3 seconds ("3s").
 
     --webhook-method <string>, $GITSYNC_WEBHOOK_METHOD
-            The HTTP method for the --webhook-url.  If not specified, this defaults to "POST".
+            The HTTP method for the --webhook-url.  If not specified,
+			this defaults to "POST".
 
     --webhook-success-status <int>, $GITSYNC_WEBHOOK_SUCCESS_STATUS
             The HTTP status code indicating a successful --webhook-url.  Setting
@@ -2577,8 +2611,12 @@ OPTIONS
             hooks can be invoked more than one time per hash, so they must be
             idempotent.
 
-	--webhook-sync-url <string>, $GITSYNC_WEBHOOK_SYNC_URL
+	--webhook-sync $GITSYNC_WEBHOOK_SYNC_URL
 			A URL for syncing on a webhook rather than sycing based on polling.
+
+	--webhook-sync-uri <string>, $GITSYNC_WEBHOOK_SYNC_URI
+			This is the URI that the http server will be listening for webhook
+			sync requests on.
 
 EXAMPLE USAGE
 
