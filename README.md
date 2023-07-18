@@ -1,3 +1,17 @@
+# git-sync-webooks
+
+This is different than the original git-sync because it contains support for 
+syncing based on webhooks instead of polling (enabling an event-driven 
+architecture). You use this github webhooks with this and it should work.
+
+There is support for
+1. IP whitelisting
+2. Secret validation (TODO)
+3. Signature validation (TODO)
+
+_FYI this is different than the git-sync default webhooks which are sent
+outwards when a sync is complete_
+
 # NOTE: THIS IS THE DEVELOPMENT BRANCH
 
 This document is the "master" branch, which is under active development.  If
@@ -69,7 +83,7 @@ docker run -d \
     registry/git-sync:tag \
         --repo=https://github.com/kubernetes/git-sync \
         --root=/tmp/git/root \
-        --period=30s
+        --webhook-sync \
 
 # run an nginx container to serve the content
 docker run -d \
