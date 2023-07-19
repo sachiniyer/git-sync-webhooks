@@ -12,7 +12,10 @@ import (
 
 func VerifySyncRequest(req *http.Request, ipNet net.IPNet, log logintf, secret string,
 	header string, secretType string, signaturePrefix string) bool {
-	log.V(2).Info(req.RemoteAddr)
+	return verifyIP(req.RemoteAddr, ipNet) && verifySecret(req, secret, header, secretType, signaturePrefix)
+}
+
+func verifySecret(req *http.Request, secret string, header string, secretType string, signaturePrefix string) bool {
 	verifySecret := true
 	if secret != "" {
 		headerSecret := req.Header.Get(header)
@@ -33,9 +36,8 @@ func VerifySyncRequest(req *http.Request, ipNet net.IPNet, log logintf, secret s
 				verifySecret = verifySignature(secret, headerSecret, body, signaturePrefix)
 			}
 		}
-
 	}
-	return verifyIP(req.RemoteAddr, ipNet) && verifySecret
+	return verifySecret
 }
 
 func verifyIP(ipString string, ipNet net.IPNet) bool {
