@@ -126,7 +126,7 @@ More documentation on specific topics can be [found here](./docs).
 
 ## Manual
 
-```
+``` 
 GIT-SYNC
 
 NAME
@@ -397,7 +397,8 @@ OPTIONS
             specified, this defaults to 3 seconds ("3s").
 
     --webhook-method <string>, $GITSYNC_WEBHOOK_METHOD
-            The HTTP method for the --webhook-url.  If not specified, this defaults to "POST".
+            The HTTP method for the --webhook-url.  If not specified,
+            this defaults to "POST".
 
     --webhook-success-status <int>, $GITSYNC_WEBHOOK_SUCCESS_STATUS
             The HTTP status code indicating a successful --webhook-url.  Setting
@@ -416,13 +417,21 @@ OPTIONS
             hooks can be invoked more than one time per hash, so they must be
             idempotent.
 
+    --webhook-sync $GITSYNC_WEBHOOK_SYNC_URL
+            A URL for syncing on a webhook rather than sycing based on polling.
+
+    --webhook-sync-uri <string>, $GITSYNC_WEBHOOK_SYNC_URI
+            This is the URI that the http server will be listening for webhook
+            sync requests on.
+
 EXAMPLE USAGE
 
     git-sync \
         --repo=https://github.com/kubernetes/git-sync \
         --ref=HEAD \
-        --period=10s \
-        --root=/mnt/git
+        --root=/mnt/git \
+        --http-bind 0.0.0.0:80 \
+        --webhook-sync
 
 AUTHENTICATION
 
@@ -470,4 +479,5 @@ HOOKS
     Hooks are not guaranteed to succeed on every single hash change.  For example,
     if a hook fails and a new hash is synced during the backoff period, the
     retried hook will fire for the newest hash.
+
 ```

@@ -514,12 +514,18 @@ func main() {
 	flWebhookSyncIP := pflag.IPNet("webhook-sync-ip",
 		envIP("0.0.0.0/0", "GITSYNC_WEBHOOK_SYNC_IP", "GIT_SYNC_WEBHOOK_SYNC_IP"),
 		"IP that the webhooks will be sent from")
-	// flWebhookSyncSecret := pflag.String("webhook-sync-secret",
-	// 	envString("", "GITSYNC_WEBHOOK_SYNC_SECRET", "GIT_SYNC_WEBHOOK_SYNC_SECRET"),
-	// 	"a Secret that is used to authenticate the web")
-	// flWebhookSyncKey := pflag.String("webhook-sync-key",
-	// 	envString("", "GITSYNC_WEBHOOK_SYNC_KEY", "GIT_SYNC_WEBHOOK_SYNC_KEY"),
-	// 	"a Key that is used to sign requests for webhook syncing")
+	flWebhookSyncSecret := pflag.String("webhook-sync-secret",
+		envString("", "GITSYNC_WEBHOOK_SYNC_SECRET", "GIT_SYNC_WEBHOOK_SYNC_SECRET"),
+		"a Secret that is used to authenticate the web")
+	flWebhookSyncHeader := pflag.String("webhook-sync-secret-header",
+		envString("", "GITSYNC_WEBHOOK_SYNC_HEADER", "GIT_SYNC_WEBHOOK_SYNC_SECRET_HEADER"),
+		"the header on which the secret is set")
+	flWebhookSyncSecretType := pflag.String("webhook-sync-secret-type",
+		envString("token", "GITSYNC_WEBHOOK_SYNC_SECRET_TYPE", "GIT_SYNC_WEBHOOK_SYNC_SECRET_TYPE"),
+		"use the secret as a 'signature' or a 'token' to authenticate")
+	flWebhookSyncSignaturePrefix := pflag.String("webhook-sync-signature-prefix",
+		envString("token", "GITSYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX", "GIT_SYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX"),
+		"prefix to add to the hash to match the signature")
 
 	// Obsolete flags, kept for compat.
 	flDeprecatedBranch := pflag.String("branch", envString("", "GIT_SYNC_BRANCH"),
@@ -754,6 +760,10 @@ func main() {
 	if *flWebhookSync {
 		if *flWebhookSyncURI == "" {
 			handleConfigError(log, true, "ERROR: --webhook-sync-uri must be specified when --webhook-sync-url is set")
+		}
+		if !(*flWebhookSyncSecretType == "token" || *flWebhookSyncSecretType == "signature") {
+			handleConfigError(log, true, "ERROR: --webhook-sync-secret-type must be either 'token' or 'signature'")
+
 		}
 	}
 
@@ -1090,7 +1100,8 @@ func main() {
 
 		if *flWebhookSync {
 			runWebhookSync := func(_ http.ResponseWriter, req *http.Request) {
-				if hook.VerifySyncRequest(req, *flWebhookSyncIP, log) {
+				if hook.VerifySyncRequest(req, *flWebhookSyncIP, log, *flWebhookSyncSecret,
+					*flWebhookSyncHeader, *flWebhookSyncSecret, *flWebhookSyncSignaturePrefix) {
 					run()
 				}
 			}
@@ -2592,7 +2603,7 @@ OPTIONS
 
     --webhook-method <string>, $GITSYNC_WEBHOOK_METHOD
             The HTTP method for the --webhook-url.  If not specified,
-			this defaults to "POST".
+            this defaults to "POST".
 
     --webhook-success-status <int>, $GITSYNC_WEBHOOK_SUCCESS_STATUS
             The HTTP status code indicating a successful --webhook-url.  Setting
@@ -2611,20 +2622,21 @@ OPTIONS
             hooks can be invoked more than one time per hash, so they must be
             idempotent.
 
-	--webhook-sync $GITSYNC_WEBHOOK_SYNC_URL
-			A URL for syncing on a webhook rather than sycing based on polling.
+    --webhook-sync $GITSYNC_WEBHOOK_SYNC_URL
+            A URL for syncing on a webhook rather than sycing based on polling.
 
-	--webhook-sync-uri <string>, $GITSYNC_WEBHOOK_SYNC_URI
-			This is the URI that the http server will be listening for webhook
-			sync requests on.
+    --webhook-sync-uri <string>, $GITSYNC_WEBHOOK_SYNC_URI
+            This is the URI that the http server will be listening for webhook
+            sync requests on.
 
 EXAMPLE USAGE
 
     git-sync \
         --repo=https://github.com/kubernetes/git-sync \
         --ref=HEAD \
-        --period=10s \
-        --root=/mnt/git
+        --root=/mnt/git \
+        --http-bind 0.0.0.0:80 \
+        --webhook-sync
 
 AUTHENTICATION
 
