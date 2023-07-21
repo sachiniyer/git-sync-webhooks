@@ -25,6 +25,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+
 	"net"
 	"net/http"
 	"net/http/pprof"
@@ -518,13 +519,13 @@ func main() {
 		envString("", "GITSYNC_WEBHOOK_SYNC_SECRET", "GIT_SYNC_WEBHOOK_SYNC_SECRET"),
 		"a Secret that is used to authenticate the web")
 	flWebhookSyncHeader := pflag.String("webhook-sync-secret-header",
-		envString("", "GITSYNC_WEBHOOK_SYNC_HEADER", "GIT_SYNC_WEBHOOK_SYNC_SECRET_HEADER"),
+		envString("GITSYNC_SECRET", "GITSYNC_WEBHOOK_SYNC_SECRET_HEADER", "GIT_SYNC_WEBHOOK_SYNC_SECRET_HEADER"),
 		"the header on which the secret is set")
 	flWebhookSyncSecretType := pflag.String("webhook-sync-secret-type",
 		envString("token", "GITSYNC_WEBHOOK_SYNC_SECRET_TYPE", "GIT_SYNC_WEBHOOK_SYNC_SECRET_TYPE"),
 		"use the secret as a 'signature' or a 'token' to authenticate")
 	flWebhookSyncSignaturePrefix := pflag.String("webhook-sync-signature-prefix",
-		envString("token", "GITSYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX", "GIT_SYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX"),
+		envString("sha256=", "GITSYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX", "GIT_SYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX"),
 		"prefix to add to the hash to match the signature")
 
 	// Obsolete flags, kept for compat.
@@ -1100,8 +1101,9 @@ func main() {
 
 		if *flWebhookSync {
 			runWebhookSync := func(_ http.ResponseWriter, req *http.Request) {
+				log.V(0).Info("webhook sync request", "method", req.Method, "uri", req.RequestURI)
 				if hook.VerifySyncRequest(req, *flWebhookSyncIP, log, *flWebhookSyncSecret,
-					*flWebhookSyncHeader, *flWebhookSyncSecret, *flWebhookSyncSignaturePrefix) {
+					*flWebhookSyncHeader, *flWebhookSyncSecretType, *flWebhookSyncSignaturePrefix) {
 					run()
 				}
 			}
@@ -2628,6 +2630,25 @@ OPTIONS
     --webhook-sync-uri <string>, $GITSYNC_WEBHOOK_SYNC_URI
             This is the URI that the http server will be listening for webhook
             sync requests on.
+
+    --webhook-sync-ip <ip>, $GITSYNC_WEBHOOK_SYNC_IP
+            An IP that the webhook will be sent from for an IP whitelist
+
+    --webhook-sync-secret <string>, $GITSYNC_WEBHOOK_SYNC_SECRET
+            A secret that is used to authenticate the webhook requests
+
+    --webhook-sync-secret-header <string>, $GITSYNC_WEBHOOK_SYNC_SECRET_HEADER
+            The header that the secret will show up on. Defaults to
+            GITSYNC_SECRET
+
+    --webhook-sync-secret-type <string>, $GITSYNC_WEBHOOK_SYNC_SECRET_TYPE
+            The type of secret that is being specified, either a 'token' or
+            'signature'. Defaults to 'token'
+
+    --webhook-sync-signature-prefix <string>,
+                        $GITSYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX
+            Whether to add a prefix to the signature when comparing. Defaults
+            to 'sha256='
 
 EXAMPLE USAGE
 

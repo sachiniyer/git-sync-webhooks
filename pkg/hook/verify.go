@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -12,7 +13,38 @@ import (
 
 func VerifySyncRequest(req *http.Request, ipNet net.IPNet, log logintf, secret string,
 	header string, secretType string, signaturePrefix string) bool {
-	return verifyIP(req.RemoteAddr, ipNet) && verifySecret(req, secret, header, secretType, signaturePrefix)
+	log.V(3).Info("verifySyncRequest", "ip", req.RemoteAddr, "secret", secret, "header", header, "secretType", secretType, "signaturePrefix", signaturePrefix)
+	return verifyIP(req.RemoteAddr, ipNet, log) && verifySecret(req, secret, header, secretType, signaturePrefix)
+}
+
+func verifyIP(ipString string, ipNet net.IPNet, log logintf) bool {
+	ip, err := extractIP(ipString)
+	if err != nil {
+		log.V(0).Error(err, "invalid ip address", "ip", ipString)
+		return false
+	}
+	if ipNet.Contains(ip) {
+		return true
+	}
+	return false
+
+}
+
+func extractIP(address string) (net.IP, error) {
+	ip := net.ParseIP(address)
+	if ip != nil {
+		return ip, nil
+	}
+	host, _, err := net.SplitHostPort(address)
+	if err != nil {
+		return nil, err
+	}
+	ip = net.ParseIP(host)
+	if ip != nil {
+		return ip, nil
+	}
+	return nil, fmt.Errorf("invalid address: %s", address)
+
 }
 
 func verifySecret(req *http.Request, secret string, header string, secretType string, signaturePrefix string) bool {
@@ -38,17 +70,6 @@ func verifySecret(req *http.Request, secret string, header string, secretType st
 		}
 	}
 	return verifySecret
-}
-
-func verifyIP(ipString string, ipNet net.IPNet) bool {
-	ip := net.ParseIP(ipString)
-	if ip != nil {
-		if ipNet.Contains(ip) {
-			return true
-		}
-	}
-	return false
-
 }
 
 func verifyToken(secret string, value string) bool {

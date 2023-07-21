@@ -6,7 +6,7 @@ architecture). You use this github webhooks with this and it should work.
 
 There is support for
 1. IP whitelisting
-2. Secret validation (TODO)
+2. Secret validation
 3. Signature validation (TODO)
 
 _FYI this is different than the git-sync default webhooks which are sent
@@ -423,6 +423,25 @@ OPTIONS
     --webhook-sync-uri <string>, $GITSYNC_WEBHOOK_SYNC_URI
             This is the URI that the http server will be listening for webhook
             sync requests on.
+            
+    --webhook-sync-ip <ip>, $GITSYNC_WEBHOOK_SYNC_IP
+            An IP that the webhook will be sent from for an IP whitelist
+
+    --webhook-sync-secret <string>, $GITSYNC_WEBHOOK_SYNC_SECRET
+            A secret that is used to authenticate the webhook requests
+    
+    --webhook-sync-secret-header <string>, $GITSYNC_WEBHOOK_SYNC_SECRET_HEADER
+            The header that the secret will show up on. Defaults to 
+            GITSYNC_SECRET
+
+    --webhook-sync-secret-type <string>, $GITSYNC_WEBHOOK_SYNC_SECRET_TYPE
+            The type of secret that is being specified, either a 'token' or 
+            'signature'. Defaults to 'token'
+            
+    --webhook-sync-signature-prefix <string>, 
+                        $GITSYNC_WEBHOOK_SYNC_SIGNATURE_PREFIX
+            Whether to add a prefix to the signature when comparing. Defaults
+            to 
 
 EXAMPLE USAGE
 
