@@ -13,8 +13,12 @@ import (
 
 func VerifySyncRequest(req *http.Request, ipNet net.IPNet, log logintf, secret string,
 	header string, secretType string, signaturePrefix string) bool {
-	log.V(3).Info("verifySyncRequest", "ip", req.RemoteAddr, "secret", secret, "header", header, "secretType", secretType, "signaturePrefix", signaturePrefix)
-	return verifyIP(req.RemoteAddr, ipNet, log) && verifySecret(req, secret, header, secretType, signaturePrefix)
+	var ip_check = verifyIP(req.RemoteAddr, ipNet, log)
+	var secret_check = verifySecret(req, secret, header, secretType, signaturePrefix)
+	log.V(3).Info("verifySyncRequest", "ip", req.RemoteAddr, "secret", secret, "header",
+		header, "secretType", secretType, "signaturePrefix", signaturePrefix,
+		"ipCheck", ip_check, "secret_check", secret_check)
+	return ip_check && secret_check
 }
 
 func verifyIP(ipString string, ipNet net.IPNet, log logintf) bool {
