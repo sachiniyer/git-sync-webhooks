@@ -7,7 +7,7 @@ architecture). You use this github webhooks with this and it should work.
 There is support for
 1. IP whitelisting
 2. Secret validation
-3. Signature validation (TODO)
+3. Signature validation
 
 _FYI this is different than the git-sync default webhooks which are sent
 outwards when a sync is complete_
