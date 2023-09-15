@@ -1120,10 +1120,10 @@ func main() {
 		}()
 	}
 
-	for {
-		if firstLoop {
-			run()
-		} else if !*flWebhookSync {
+	run()
+
+	if !*flWebhookSync {
+		for {
 			run()
 			// Sleep until the next sync. If syncSig is set then the sleep may
 			// be interrupted by that signal.
@@ -1135,9 +1135,11 @@ func main() {
 				t.Stop()
 			}
 			log.V(3).Info("next sync", "waitTime", flPeriod.String())
-		} else {
-			continue
 		}
+	}
+	// cpu friendly infinite loop
+	for {
+		select {}
 	}
 }
 
